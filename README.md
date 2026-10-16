@@ -12,7 +12,7 @@ This fork adds optional compatibility checks. Existing configurations keep their
 - `[Patch:Name] ExpectedMatches=1` requires exactly that many pattern matches. This is separate from `Match`, which selects the match to write. Omit it to keep the original behaviour.
 - `[Compatibility] Module="GameAssembly.dll"` and `SHA256="<64 hexadecimal characters>"` require the loaded module's file to have that SHA-256 hash before any patches run. `Module` defaults to `auto` for the main executable. An empty hash disables this check.
 
-Atomic mode scans all patterns before applying writes, so patterns must not depend on an earlier patch changing memory. Disabled patches are optional and do not cause validation to fail. Rejection details are written to `SUWSF.log`.
+Atomic mode scans all patterns before applying writes, so patterns must not depend on an earlier patch changing memory. Disabled patches are optional and do not cause validation to fail. A failed compatibility check or atomic validation displays a warning while the game continues unpatched. Rejection details are written to `SUWSF.log`.
 
 Ultimate ASI Loader waits for patches to finish through `InitializeASI`, before game startup continues. Other loaders retain the background-thread fallback. Additional copies of SUWSF in the same process are skipped.
 
