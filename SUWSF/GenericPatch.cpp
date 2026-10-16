@@ -10,6 +10,7 @@
 #include "../external/Hooking.Patterns/Hooking.Patterns.h"
 #include <boost/lexical_cast.hpp>
 #include "Compatibility.h"
+#include <cctype>
 
 void GenericPatch::Init()
 {
@@ -122,6 +123,19 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 		{
 			DBOUT("No pattern found, skipping patch...");
 			goto CONTINUE;
+		}
+		if (UserSettings::config.atomic)
+		{
+			std::istringstream tokens(config.pattern);
+			std::string token;
+			bool found = false;
+			while (tokens >> token)
+			{
+				found = true;
+				if (token != "?" && (token.size() != 2 || !std::isxdigit(static_cast<unsigned char>(token[0])) || !std::isxdigit(static_cast<unsigned char>(token[1]))))
+					goto CONTINUE;
+			}
+			if (!found) goto CONTINUE;
 		}
 		if (config.valType == "float" || config.valType == "int" || config.valType == "double")
 		{
