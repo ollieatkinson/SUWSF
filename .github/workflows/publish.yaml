@@ -34,7 +34,7 @@ jobs:
         run: |
           nuget restore SUWSF.sln
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
-          msbuild SUWSF.sln -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:BuildVersion="${{ github.sha }}"
+          msbuild SUWSF.sln -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:BuildVersion="${{ inputs.source-ref || github.sha }}"
           if ($LASTEXITCODE) { exit $LASTEXITCODE }
       - name: Package
         shell: pwsh
