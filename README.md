@@ -14,7 +14,7 @@ This fork adds optional compatibility checks. Existing configurations keep their
 
 Atomic mode scans all patterns before applying writes, so patterns must not depend on an earlier patch changing memory. Disabled patches are optional and do not cause validation to fail. Rejection details are written to `SUWSF.log`.
 
-GitHub Actions builds both x86 and x64 from source. Its workflow can also be called by another repository, pinned to a commit.
+GitHub Actions builds both x86 and x64 from source. Pushing a `v*` tag publishes the ZIPs and SHA-256 checksums, so game patches can download a pinned binary without rebuilding SUWSF. These ZIPs contain SUWSF only; supply an ASI loader separately.
 
 ## Installation
 
