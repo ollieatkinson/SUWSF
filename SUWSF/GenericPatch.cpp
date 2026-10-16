@@ -12,11 +12,34 @@
 #include "Compatibility.h"
 #include <cctype>
 
+static DWORD WINAPI ShowCompatibilityWarning(LPVOID)
+{
+	MessageBoxW(nullptr,
+		L"This patch is not compatible with your game version or configuration.\n\n"
+		L"The game will continue without the widescreen fixes.\n\n"
+		L"Please update or remove the mod. More details are in SUWSF.log.",
+		L"Ultrawide patch not applied", MB_OK | MB_ICONWARNING | MB_SETFOREGROUND | MB_TOPMOST);
+	return 0;
+}
+
+static void WarnIncompatible()
+{
+	// Plugin initialization can run under the loader lock. Show UI only after
+	// that lock is released, without making game startup wait for the dialog.
+	if (auto thread = CreateThread(nullptr, 0, ShowCompatibilityWarning, nullptr, 0, nullptr))
+		CloseHandle(thread);
+	else
+		DBOUT("Could not display compatibility warning: " << GetLastError());
+}
+
 void GenericPatch::Init()
 {
 	DBOUT("Initializing GenericPatch patches");
 	if (UserSettings::config.enabled && !Compatibility::Check())
+	{
+		WarnIncompatible();
 		return;
+	}
 	PatchAll(GetConfigs());
 }
 
@@ -184,6 +207,7 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 		if (UserSettings::config.atomic)
 		{
 			DBOUT("Invalid configuration for " << entry.first << "; no patches applied.");
+			WarnIncompatible();
 			return {};
 		}
 		continue;
@@ -264,6 +288,7 @@ void GenericPatch::PatchAll(std::vector<Config> configs)
             if (UserSettings::config.atomic)
             {
                 DBOUT("Atomic validation failed; no patches applied.");
+                WarnIncompatible();
                 return;
             }
         }
