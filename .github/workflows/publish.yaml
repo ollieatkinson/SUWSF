@@ -7,6 +7,10 @@ on:
   pull_request:
   workflow_dispatch:
   workflow_call:
+    inputs:
+      source-ref:
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -20,6 +24,8 @@ jobs:
     steps:
       - uses: actions/checkout@v7.0.1
         with:
+          repository: ollieatkinson/SUWSF
+          ref: ${{ inputs.source-ref || github.sha }}
           submodules: recursive
       - uses: microsoft/setup-msbuild@v2
       - uses: nuget/setup-nuget@v2
