@@ -1,7 +1,9 @@
 #pragma once
+#include <Windows.h>
+#include <cstddef>
 
 class Memory
 {
 public:
-	static void Write(BYTE* address, BYTE* bytes, int num);
+	static bool Write(BYTE* address, const BYTE* bytes, size_t num);
 };

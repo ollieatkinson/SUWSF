@@ -1,74 +1,46 @@
-name: Publish
+name: Build
 
 on:
   push:
-    tags:
-      - '*'
+    branches: [main]
+    tags: ['v*']
+  pull_request:
+  workflow_dispatch:
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   build:
     runs-on: windows-2022
     strategy:
       matrix:
-        platform: [ x86, x64 ]
+        platform: [x86, x64]
     steps:
-    - name: Check Tag
-      id: check-tag
-      uses: actions-ecosystem/action-regex-match@v2
-      with:
-        text: ${{ github.ref_name }}
-        regex: '^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-((?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\.(?:0|[1-9]\d*|\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\+([0-9a-zA-Z-]+(?:\.[0-9a-zA-Z-]+)*))?$'
-
-    - name: Fail if invalid
-      if: steps.check-tag.outputs.match == ''
-      uses: Actions/github-script@v3
-      with:
-        script: |
-          core.setFailed('Invalid tag')
-    
-    - uses: microsoft/setup-msbuild@v1
-
-    - uses: abel0b/setup-premake@v2
-      with:
-        version: "5.0.0-beta1"
-
-    - uses: nuget/setup-nuget@v1
-
-    - uses: actions/checkout@v2
-      with:
-        submodules: 'recursive'
-
-    - name: Build SUWSF
-      run: |
-        nuget restore SUWSF.sln
-        msbuild SUWSF.sln -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:BUILDVERSION="${{ github.ref_name }}"
-    
-    - name: Download Ultimate ASI Loader x64
-      if: ${{ matrix.platform == 'x64' }}
-      uses: suisei-cn/actions-download-file@v1
-      with:
-        url: "https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader_x64.zip"
-        target: "."
-
-    - name: Download Ultimate ASI Loader x86
-      if: ${{ matrix.platform == 'x86' }}
-      uses: suisei-cn/actions-download-file@v1
-      with:
-        url: "https://github.com/ThirteenAG/Ultimate-ASI-Loader/releases/latest/download/Ultimate-ASI-Loader.zip"
-        target: "."
-    
-    - name: Prepare for release
-      run: |
-        7z e Ultimate-ASI-Loader*.zip
-        mv *.dll ${{ matrix.platform }}/Release/dsound.dll
-        rm ${{ matrix.platform }}/Release/*.pdb
-        mv README.md ${{ matrix.platform }}/Release/
-        mv LICENSE ${{ matrix.platform }}/Release/
-        mv SUWSF.ini ${{ matrix.platform }}/Release/
-        7z a -tzip "SUWSF-${{ matrix.platform }}.zip" "./${{ matrix.platform }}/Release/*"
-
-    - name: Create release
-      uses: softprops/action-gh-release@v1
-      with:
-        files: "SUWSF-${{ matrix.platform }}.zip"
-        draft: true
+      - uses: actions/checkout@v7.0.1
+        with:
+          submodules: recursive
+      - uses: microsoft/setup-msbuild@v2
+      - uses: nuget/setup-nuget@v2
+      - name: Build
+        shell: pwsh
+        run: |
+          nuget restore SUWSF.sln
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+          msbuild SUWSF.sln -p:Configuration=Release -p:Platform=${{ matrix.platform }} -p:BuildVersion="${{ github.sha }}"
+          if ($LASTEXITCODE) { exit $LASTEXITCODE }
+      - name: Package
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory package,dist
+          Copy-Item '${{ matrix.platform }}/Release/SUWSF.asi',README.md,LICENSE,SUWSF.ini package/
+          $name = 'SUWSF-${{ matrix.platform }}.zip'
+          Compress-Archive package/* "dist/$name"
+          $hash = (Get-FileHash "dist/$name" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$hash  $name" | Set-Content "dist/$name.sha256" -Encoding ascii
+      - uses: actions/upload-artifact@v7.0.2
+        with:
+          name: SUWSF-${{ matrix.platform }}
+          path: dist/*
+          if-no-files-found: error

@@ -9,10 +9,13 @@
 #include "../external/tinyexpr/tinyexpr.h"
 #include "../external/Hooking.Patterns/Hooking.Patterns.h"
 #include <boost/lexical_cast.hpp>
+#include "Compatibility.h"
 
 void GenericPatch::Init()
 {
 	DBOUT("Initializing GenericPatch patches");
+	if (UserSettings::config.enabled && !Compatibility::Check())
+		return;
 	PatchAll(GetConfigs());
 }
 
@@ -37,6 +40,7 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 		DBOUT("Found patch " << entry.first);
 
 		Config config;
+		config.name = entry.first;
 
 		for (auto& params : entry.second)
 		{
@@ -85,13 +89,27 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 				DBOUT("Match=" << params.second);
 				config.matches = params.second;
 			}
+			else if (params.first == "ExpectedMatches")
+			{
+				try
+				{
+					size_t end;
+					config.expectedMatches = std::stoi(params.second, &end);
+					if (end != params.second.size() || config.expectedMatches < 1)
+						goto CONTINUE;
+				}
+				catch (const std::exception&)
+				{
+					goto CONTINUE;
+				}
+			}
 			else if (params.first == "Enabled")
 			{
 				DBOUT("Enabled=" << params.second);
 				if (params.second != "true")
 				{
 					DBOUT("Patch not enabled, skipping patch...");
-					goto CONTINUE;
+					goto SKIP;
 				}
 			}
 			else if (params.first == "Module")
@@ -151,81 +169,117 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 			}
 		}
 		configs.push_back(config);
+		continue;
 	CONTINUE:
+		if (UserSettings::config.atomic)
+		{
+			DBOUT("Invalid configuration for " << entry.first << "; no patches applied.");
+			return {};
+		}
+	SKIP:
 		continue;
 	}
 	DBOUT(configs.size() << " patches found");
 	return configs;
 }
 
+bool GenericPatch::PlanPatch(const Config& config, std::vector<Write>& writes)
+{
+    const auto moduleName = config.module == "auto" ? std::string(szFileName) : config.module;
+    const auto module = GetModuleInfo(const_cast<char*>(moduleName.c_str()));
+    if (!module.EntryPoint)
+    {
+        DBOUT("Could not find module " << moduleName);
+        return false;
+    }
+    const auto base = reinterpret_cast<uintptr_t>(module.lpBaseOfDll);
+    auto pattern = hook::pattern(base, base + module.SizeOfImage, config.pattern);
+    DBOUT(config.name << ": found " << pattern.size() << " matches");
+    if (!pattern.size() || (config.expectedMatches && pattern.size() != config.expectedMatches))
+        return false;
+
+    size_t first = 0, last = pattern.size();
+    if (config.matches != "all")
+    {
+        int match;
+        try
+        {
+            match = (config.matches == "last" || config.matches == "end") ? static_cast<int>(pattern.size()) : std::stoi(config.matches);
+        }
+        catch (const std::exception&)
+        {
+            return false;
+        }
+        if (match < 1 || match > pattern.size()) return false;
+        first = match - 1;
+        last = match;
+    }
+
+    const auto value = BytesFromString(config.val);
+    for (size_t i = first; i < last; ++i)
+    {
+        auto address = pattern.get(i).get<BYTE>(config.offset);
+        const auto offset = reinterpret_cast<uintptr_t>(address) - base;
+        if (offset > module.SizeOfImage || value.size() > module.SizeOfImage - offset)
+            return false;
+        Write write{address, value, {}};
+        if (UserSettings::config.atomic)
+        {
+            write.original.resize(value.size());
+            SIZE_T read;
+            if (!ReadProcessMemory(GetCurrentProcess(), address, write.original.data(), value.size(), &read) || read != value.size())
+                return false;
+        }
+        writes.push_back(std::move(write));
+    }
+    return true;
+}
+
 void GenericPatch::PatchAll(std::vector<Config> configs)
 {
-	for (auto& config : configs)
-	{
-		DBOUT("Searching for bytes " << config.pattern);
-		std::string moduleName;
-		if (config.module == "auto")
-		{
-			moduleName = szFileName;
-		}
-		else
-		{
-			moduleName = config.module;
-		}
+    std::vector<Write> writes;
+    for (const auto& config : configs)
+    {
+        bool valid = false;
+        try
+        {
+            valid = PlanPatch(config, writes);
+        }
+        catch (const std::exception& e)
+        {
+            DBOUT("Could not prepare " << config.name << ": " << e.what());
+        }
+        if (!valid)
+        {
+            DBOUT("Validation failed for " << config.name);
+            if (UserSettings::config.atomic)
+            {
+                DBOUT("Atomic validation failed; no patches applied.");
+                return;
+            }
+        }
+        else if (!UserSettings::config.atomic)
+        {
+            for (const auto& write : writes)
+                if (!Memory::Write(write.address, write.value.data(), write.value.size()))
+                    DBOUT("Could not write patch " << config.name);
+        }
+        if (!UserSettings::config.atomic) writes.clear();
+    }
 
-		mInfo = GetModuleInfo(const_cast<char*>(moduleName.c_str()));
-
-		if (mInfo.EntryPoint == nullptr)
-		{
-			DBOUT("Could not find module " << moduleName << ", skipping patch...");
-			continue;
-		}
-
-		auto pattern = hook::pattern((uintptr_t)mInfo.lpBaseOfDll, (uintptr_t)mInfo.lpBaseOfDll + mInfo.SizeOfImage, config.pattern);
-		DBOUT("Found " << pattern.size() << " matches");
-
-		if (pattern.size() == 0)
-		{
-			continue;
-		}
-
-		auto value = BytesFromString(config.val);
-		if (config.matches == "all")
-		{
-			for (int i = 0; i < pattern.size(); i++)
-			{
-				DBOUT("Writing " << hexStr(value.data(), value.size()) << "with length " << value.size() << " to result " << i + 1);
-				Memory::Write(pattern.get(i).get<BYTE>(config.offset), value.data(), value.size());
-			}
-		}
-		else
-		{
-			int match = -1;
-			if (config.matches == "last" || config.matches == "end")
-			{
-				match = pattern.size();
-			}
-			else
-			{
-				try
-				{
-					match = std::stoi(config.matches);
-				}
-				catch (std::exception const& e)
-				{
-					DBOUT("Could not parse match number as integer, skipping...");
-					continue;
-				}
-			}
-
-			if (match < 1 || match > pattern.size())
-			{
-				DBOUT("Match setting invalid, must resolve to a value between 1 and " << pattern.size());
-				continue;
-			}
-
-			DBOUT("Writing " << hexStr(value.data(), value.size()) << "with length " << value.size() << " to match " << match);
-			Memory::Write(pattern.get(match - 1).get<BYTE>(config.offset), value.data(), value.size());
-		}
-	}
+    if (!UserSettings::config.atomic) return;
+    for (size_t i = 0; i < writes.size(); ++i)
+    {
+        const auto& write = writes[i];
+        if (Memory::Write(write.address, write.value.data(), write.value.size())) continue;
+        DBOUT("Patch write failed; restoring original bytes.");
+        for (size_t j = i + 1; j > 0; --j)
+        {
+            const auto& previous = writes[j - 1];
+            if (!Memory::Write(previous.address, previous.original.data(), previous.original.size()))
+                DBOUT("Could not restore bytes at " << static_cast<void*>(previous.address));
+        }
+        return;
+    }
+    DBOUT("Applied " << writes.size() << " writes after atomic validation.");
 }

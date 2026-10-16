@@ -1,13 +1,13 @@
 #include "Memory.h"
 #include <Windows.h>
+#include <cstring>
 
-void Memory::Write(BYTE* address, BYTE* bytes, int num)
+bool Memory::Write(BYTE* address, const BYTE* bytes, size_t num)
 {
-	unsigned long OldProtection;
-	VirtualProtect(address, num, PAGE_EXECUTE_READWRITE, &OldProtection);
-	for (int i = 0; i < num; i++)
-	{
-		*(address + i) = *(bytes + i);
-	}
-	VirtualProtect(address, num, OldProtection, _Post_ _Notnull_ nullptr);
+	DWORD oldProtection, ignored;
+	if (!VirtualProtect(address, num, PAGE_EXECUTE_READWRITE, &oldProtection))
+		return false;
+	std::memcpy(address, bytes, num);
+	const bool flushed = FlushInstructionCache(GetCurrentProcess(), address, num) != FALSE;
+	return VirtualProtect(address, num, oldProtection, &ignored) != FALSE && flushed;
 }

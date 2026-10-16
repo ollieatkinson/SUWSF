@@ -39,4 +39,5 @@ void UserSettings::SetConfig()
 	DBOUT("Detected aspect ratio is " << config.aspectratio);
 
 	config.enabled = ini.ReadBoolean("UserSettings", "Enabled", true);
+	config.atomic = ini.ReadBoolean("UserSettings", "Atomic", false);
 }

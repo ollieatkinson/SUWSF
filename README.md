@@ -4,6 +4,18 @@ Somewhat Universal Widescreen Fix is intended to enable widescreen aspect ratios
 
 ## WARNING IT IS NOT RECOMMENDED TO USE THIS FIX IN GAMES THAT CONTAIN ANTICHEAT
 
+## Fork additions
+
+This fork adds optional compatibility checks. Existing configurations keep their original behaviour unless these options are enabled.
+
+- `[UserSettings] Atomic=true` validates every enabled patch before writing anything. A missing module or pattern, invalid configuration, or unexpected match count skips the entire set. Original bytes are saved so a failed write can be rolled back.
+- `[Patch:Name] ExpectedMatches=1` requires exactly that many pattern matches. This is separate from `Match`, which selects the match to write. Omit it to keep the original behaviour.
+- `[Compatibility] Module="GameAssembly.dll"` and `SHA256="<64 hexadecimal characters>"` require the loaded module's file to have that SHA-256 hash before any patches run. `Module` defaults to `auto` for the main executable. An empty hash disables this check.
+
+Atomic mode scans all patterns before applying writes, so patterns must not depend on an earlier patch changing memory. Disabled patches are optional and do not cause validation to fail. Rejection details are written to `SUWSF.log`.
+
+GitHub Actions builds both x86 and x64 from source. Its workflow can also be called by another repository, pinned to a commit.
+
 ## Installation
 
 - **Ensure you have the latest [64bit VC Redist](https://aka.ms/vs/17/release/vc_redist.x64.exe) or [32bit VC Redist](https://aka.ms/vs/17/release/vc_redist.x86.exe) installed.**

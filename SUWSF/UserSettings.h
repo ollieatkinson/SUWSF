@@ -10,6 +10,7 @@ public:
 		int width, height;
 		double aspectratio;
 		bool enabled = true;
+		bool atomic = false;
 	};
 	static Config config;
 private:
