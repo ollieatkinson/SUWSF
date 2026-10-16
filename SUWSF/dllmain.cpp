@@ -29,7 +29,8 @@ static void InitOnce()
 	std::call_once(once, [] {
 		// A second copy of the ASI must not patch the same process again.
 		const auto name = L"Local\\SUWSF.Initialize." + std::to_wstring(GetCurrentProcessId());
-		static HANDLE owner = CreateMutexW(nullptr, FALSE, name.c_str());
+		static HANDLE owner;
+		owner = CreateMutexW(nullptr, FALSE, name.c_str());
 		if (owner && GetLastError() == ERROR_ALREADY_EXISTS)
 		{
 			CloseHandle(owner);
