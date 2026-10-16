@@ -39,6 +39,11 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 			continue;
 
 		DBOUT("Found patch " << entry.first);
+		if (ini.ReadString(entry.first, "Enabled", "true") != "true")
+		{
+			DBOUT("Patch not enabled, skipping patch...");
+			continue;
+		}
 
 		Config config;
 		config.name = entry.first;
@@ -102,15 +107,6 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 				catch (const std::exception&)
 				{
 					goto CONTINUE;
-				}
-			}
-			else if (params.first == "Enabled")
-			{
-				DBOUT("Enabled=" << params.second);
-				if (params.second != "true")
-				{
-					DBOUT("Patch not enabled, skipping patch...");
-					goto SKIP;
 				}
 			}
 			else if (params.first == "Module")
@@ -190,7 +186,6 @@ std::vector<GenericPatch::Config> GenericPatch::GetConfigs()
 			DBOUT("Invalid configuration for " << entry.first << "; no patches applied.");
 			return {};
 		}
-	SKIP:
 		continue;
 	}
 	DBOUT(configs.size() << " patches found");
